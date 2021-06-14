@@ -19,7 +19,8 @@ This only assumes Docker Engine 18.09 or later [to be installed](https://docs.do
 ## Local Development/Testing installation instructions
 For local development and improving the app, pipenv is used.
 The only assumption is [Python 3.7 (with pip) installed](https://www.python.org/downloads/release/python-3710/) on either a Linux, MacOS, or WSL workstation.
-1. `pip install pipenv` (can also do this outside of pip e.g. MacOS `brew install pipenv`)
+1. `pip install pipenv` (can also do this outside of pip e.g. MacOS `brew install pipenv`) 
+    and `export PIPENV_VENV_IN_PROJECT="enabled"`
 2. In repo root, `pipenv install --dev --python 3.7.5` and `pipenv shell`
 3. `cd project` and `python manage.py runserver` to start the local dev server
 4. Test app (separate terminal window) with `curl http://127.0.0.1:8000/` or `curl http://127.0.0.1:8000/ -H "Accept: application/json"` to see locahost server response.
@@ -32,11 +33,12 @@ By default, Django uses the dictConfig format, configured inside of settings.LOG
 Logging level is by default INFO which does not include the request URL log. To turn on request URL logs:
 - If running in Docker mode, use `docker run --env API_LOGLEVEL=DEBUG -it -p 8000:8000 <IMAGE_ID>`
 - If running in pipenv mode, use `API_LOGLEVEL=DEBUG python manage.py runserver`
+- If running on kubernetes, add `API_LOGLEVEL=DEBUG` to deployment `spec.template.spec.containers.[0].env`
 
-## CI/CD (not tested! - didn't want to use credit card)
-- For completion, I've included a draft `k8s/manifest.yaml` file for use with `kubectl` once the CI/CD service account is connected to a hosted k8s cluster.
-- The `.circleci/config.yml` is a draft of steps for a pipeline which tests branch commits before merging into mainline (master) and pushing a new docker image to some Container Registry.
-  - A tag push is used to then apply the latest (or user-specified) image to the actual cluster.
+## Cloud and CI/CD
+- Included is a simple `k8s/manifest.yaml` file for use with `kubectl` once the CI/CD service account is granted access to a hosted k8s cluster (via GCP service accounts).
+- The `.circleci/config.yml` defines a basic pipeline which tests branch commits before merging into main and pushes a new docker image to Container Registry.
+- A human operator can approve the "Hold" step which then deploys the image tagged with "latest"
 
 
 ## Other information

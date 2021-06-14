@@ -1,51 +1,92 @@
 version: 2.1
+# Environment variables configured are:
+# GCLOUD_SERVICE_KEY which is the private key json from GCP with Storage admin and GKE admin roles
+# PIPENV_VENV_IN_PROJECT="enabled"
 
 # Define the jobs we want to run for this project
 jobs:
-  build:
+  install:
     docker:
-      - image: circleci/<language>:<version TAG>
-        auth:
-          username: mydockerhub-user
-          password: $DOCKERHUB_PASSWORD  # context / project UI env-var reference
+      - image: circleci/python:3.7.5
     steps:
       - checkout
-      - run: my-build-commands
-  test:
+      - run:
+          name: Install python deps
+          command: |
+            pip install pipenv
+            pipenv install --dev --python 3.7.5
+      - persist_to_workspace:
+          root: .
+          paths:
+            - .
+            - .venv
+  test-lint:
     docker:
-      - image: circleci/<language>:<version TAG>
-        auth:
-          username: mydockerhub-user
-          password: $DOCKERHUB_PASSWORD  # context / project UI env-var reference
+      - image: circleci/python:3.7.5
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: Test
+          command: |
+            cd project
+            pipenv run python manage.py test
+      - run:
+          name: Lint
+          command: |
+            pipenv run pylint project/** || true
+  build-push-image:
+    docker:
+      - image: google/cloud-sdk
     steps:
       - checkout
-      - run: my-test-commands
+      - setup_remote_docker:
+          version: 18.09.3
+          docker_layer_caching: false
+      - run: |
+          echo $GCLOUD_SERVICE_KEY | gcloud auth activate-service-account --key-file=-
+          gcloud --quiet config set project tony-zhang
+          gcloud --quiet config set compute/zone us-central1-a
+          gcloud --quiet auth configure-docker
+      - run: |
+          docker build -t gcr.io/tony-zhang/django-helloworld:${CIRCLE_SHA1:0:7} -t gcr.io/tony-zhang/django-helloworld:latest .
+          docker push gcr.io/tony-zhang/django-helloworld
   deploy:
     docker:
-      - image: circleci/<language>:<version TAG>
-        auth:
-          username: mydockerhub-user
-          password: $DOCKERHUB_PASSWORD  # context / project UI env-var reference
+      - image: google/cloud-sdk
     steps:
       - checkout
-      - run: my-deploy-commands
+      - run: |
+          echo $GCLOUD_SERVICE_KEY | gcloud auth activate-service-account --key-file=-
+          gcloud --quiet config set project tony-zhang
+          gcloud --quiet config set compute/zone us-central1-a
+          gcloud container clusters get-credentials autodesk-cluster --region=us-central1
+          kubectl apply -f k8s/manifest.yaml
+          kubectl rollout restart deployment --namespace=default
 
 # Orchestrate our job run sequence
 workflows:
   build_and_test:
     jobs:
       - install
-      - test:
+      - test-lint:
           requires:
-            - build
-      - build-image
-      - test-image
-      - 
+            - install
+      - build-push-image:
+          filters:
+            branches:
+              only: main
       - hold:
           type: approval
           requires:
-            - build
-            - test
+            - test-lint
+            - build-push-image
+          filters:
+            branches:
+              only: main
       - deploy:
           requires:
             - hold
+          filters:
+            branches:
+              only: main

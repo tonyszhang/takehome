@@ -30,6 +30,10 @@ spec:
       containers:
       - name: django-helloworld
         image: gcr.io/tony-zhang/django-helloworld:latest
+        env:
+        - name: API_LOGLEVEL
+          # Set to INFO or leave out to hide request URL logs
+          value: DEBUG
         ports:
         - name: http
           containerPort: 8000
